@@ -48,6 +48,14 @@ class InvestingAnalysis:
             print(f"   - Error in EPS calculation: {e}")
             eps = None
             incomplete = True
+
+        try:
+            shares = bg.loc['Ordinary Shares Number']
+
+        except Exception as e:
+            print(f"   - Error in Shares calculation: {e}")
+            shares = None
+            incomplete = True
             
 
         try:
@@ -127,6 +135,7 @@ class InvestingAnalysis:
             'roe': roe,
             'fcf': fcf,
             'prices': prices,
+            'shares': shares,
             'incomplete': incomplete
         }
 
@@ -135,43 +144,52 @@ class InvestingAnalysis:
         Generates a dataset of fundamental analysis for a list of tickers.
         """
         results = pd.DataFrame()
-        results.to_csv('results.csv', index=False)
+        results_path = os.path.join(os.getcwd(), 'value_investing', 'results.csv')
+        results.to_csv(results_path, index=False)
+
         incomplete = pd.DataFrame()
-        incomplete.to_csv('incomplete.csv', index=False)
+        incomplete_path = os.path.join(os.getcwd(), 'value_investing', 'incomplete.csv')
+        incomplete.to_csv(incomplete_path, index=False)
 
         # Batch accumulator
         batch = pd.DataFrame()
         incomplete_list = []
         for i, ticker in enumerate(tickers):
-            print(f"Processing ticker {ticker}:  {i}/{len(tickers)}")
-            result = self.fundamental_analysis(ticker, use_quarterly=False)
-            result = pd.DataFrame(result)
-            result['ticker'] = ticker
-            result['returns'] = result['prices'].pct_change()
+            try:
+                print(f"Processing ticker {ticker}:  {i}/{len(tickers)}")
+                result = self.fundamental_analysis(ticker, use_quarterly=False)
+                result = pd.DataFrame(result)
+                result['ticker'] = ticker
+                result['returns'] = result['prices'].pct_change()
+                
+                result = result.dropna(how='all', subset=[col for col in result.columns if col not in ['ticker', 'incomplete']])
+                result['date'] = result.index
+                
+                if result['incomplete'].sum() > 0:
+                    incomplete_list.append(ticker)
             
-            result = result.dropna(how='all', subset=[col for col in result.columns if col not in ['ticker', 'incomplete']])
-            result['date'] = result.index
-            
-            if result['incomplete'].sum() > 0:
-                incomplete_list.append(ticker)
+                results = pd.concat([results, result])
+
+                # Add to batch
+                batch = pd.concat([batch, result])
+                results = pd.concat([results, result])
+                
+                # Save every 20 iterations OR on the last iteration
+                if (i + 1) % 20 == 0 or (i + 1) == len(tickers):
+                    cwd = os.getcwd()
+                    path = os.path.join(cwd, 'value_investing', 'results.csv')
+                    batch.to_csv(path, mode='a', index=False)
+                    batch = pd.DataFrame()
+
+                    if incomplete_list:
+                        path = os.path.join(cwd, 'value_investing', 'incomplete.csv')
+                        pd.DataFrame({'ticker': incomplete_list}).to_csv(path, index=False, mode='a')
+                        incomplete_list = []
         
-            results = pd.concat([results, result])
-
-            # Add to batch
-            batch = pd.concat([batch, result])
-            results = pd.concat([results, result])
-            
-            # Save every 20 iterations OR on the last iteration
-            if (i + 1) % 20 == 0 or (i + 1) == len(tickers):
-                cwd = os.getcwd()
-                path = os.path.join(cwd, 'value_investing', 'results.csv')
-                batch.to_csv(path, mode='a', index=False)
-                batch = pd.DataFrame()
-
-                if incomplete_list:
-                    path = os.path.join(cwd, 'value_investing', 'incomplete.csv')
-                    pd.DataFrame({'ticker': incomplete_list}).to_csv(path, index=False, mode='a')
-                    incomplete_list = []
+            except Exception as e:
+                print(f"ERROR in dataset generator main: {ticker}")
+                print(f"   - Error: {e}")
+                continue
             
                     
 
